@@ -790,6 +790,9 @@ def build_one_degredation_model(cfg, h, w, c, deg: str):
     elif deg == "phase_retrieval":
         oversample=2.0
         H = PhaseRetrievalOperator(oversample=oversample, device=device)
+    elif deg == "diffuser_cam":
+        psf_path = './_exp/psf_sample.jpg'
+        H = DiffuserCamOperator(psf_path=psf_path, device=device)
     else:
         raise ValueError(f"Degredation model {deg} does not exist.")
 
@@ -903,3 +906,34 @@ class PhaseRetrievalOperator(NonLinearOperator):
         if tensor.dim() != 4:
             raise ValueError("Input tensor should have 4 dimensions.")
         return tensor[:, :, pad_top : -pad_bottom, pad_left : -pad_right]
+    
+    
+from PIL import Image    
+#@register_operator(name='diffuser_cam')
+class DiffuserCamOperator():
+    def __init__(self, psf_path, device):
+        self.device = device
+        psf = Image.open(psf_path)
+        psf = psf.resize((127, 127), Image.BICUBIC)
+        psf = np.array(psf, dtype=np.float32)
+        bg = np.mean(psf[5:15,5:15])
+        psf -= bg
+        psf = np.clip(psf, 0, None)
+        psf /= np.sum(psf)
+        psf *= 3
+        psf = torch.tensor(psf)
+        psf = psf.permute(2, 0, 1)
+        self.psf = psf.view(3, 1, psf.shape[1], psf.shape[2]).to(device)
+    
+    def forward(self, data, **kwargs):
+        # Flip the PSF horizontally and vertically
+        flipped_psf = torch.flip(self.psf, [2, 3])
+        # Perform the convolution
+        result = F.conv2d(data, flipped_psf, padding=(self.psf.size(2) // 2, self.psf.size(3) // 2), groups=data.size(1))
+        return result
+    
+    def H(self, data, **kwargs):
+        return self.forward(data, **kwargs)
+    
+    def H_pinv(self, x):
+        return self.H(x)

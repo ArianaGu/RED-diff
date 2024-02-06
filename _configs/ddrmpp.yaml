@@ -2,4 +2,5 @@
 
 defaults:
 - imagenet256_uncond
+- override algo: reddiff
 - _self_

@@ -37,10 +37,11 @@ def main(cfg):
     if classifier is not None:
         classifier.eval()
     diffusion = Diffusion(**cfg.diffusion)
-    cfg.algo.deg = "deblur_gauss"
+    cfg.algo.deg = "diffuser_cam"
     cfg.exp.num_steps = 1000
-    cfg.algo.grad_term_weight = 0.25                #lambda
-    cfg.algo.lr = 0.2
+    cfg.algo.grad_term_weight = 0.25           #lambda
+    cfg.algo.sigma_y = 0.05
+    cfg.algo.lr = 0.1
     cg_model = ClassifierGuidanceModel(model, classifier, diffusion, cfg)   #?? what is the easiest way to call stable diffusion?
 
     algo = build_algo(cg_model, cfg)
@@ -63,6 +64,7 @@ def main(cfg):
     y_0 = H.H(x)
     y_0 = y_0 + torch.randn_like(y_0) * cfg.algo.sigma_y * 2
     kwargs["y_0"] = y_0
+    kwargs["num_loop"] = 1
     yo = torch.reshape(y_0, (1, 3, 256, 256))
     yo = postprocess(yo).detach().cpu()
     img = tvu.make_grid(yo, nrow=1).permute(1, 2, 0).numpy()
@@ -78,7 +80,7 @@ def main(cfg):
     xo = postprocess(xt_s).detach().cpu()
     # convert tensor to img
     img = tvu.make_grid(xo, nrow=1).permute(1, 2, 0).numpy()
-    img = (img/img.max()* 255).astype(np.uint8)
+    img = ((img-img.min())/img.max()* 255).astype(np.uint8)
     img = Image.fromarray(img)
     # save the image
     img.save('_exp/00003_sampled.png')
